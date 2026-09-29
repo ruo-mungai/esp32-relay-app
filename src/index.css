@@ -1,0 +1,4 @@
+/* Base styles live in App.css so the palette matches the device UI. */
+#root {
+  min-height: 100vh;
+}
