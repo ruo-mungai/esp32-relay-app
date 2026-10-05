@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: esp32-relay-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@example.com
+      - key: ADMIN_PASSWORD
+        value: admin123
+      # Data is written to the ephemeral filesystem by default, which is fine
+      # for free-tier testing (it resets on redeploy). For production, add a
+      # `disk` block (paid) and set DB_FILE=/var/data/data.json.
+      - key: MQTT_ENABLED
+        value: "1"
+      - key: MQTT_HOST
+        sync: false
+      - key: MQTT_PORT
+        value: "8884"
+      - key: MQTT_DEVICE_PORT
+        value: "8883"
+      - key: MQTT_USERNAME
+        sync: false
+      - key: MQTT_PASSWORD
+        sync: false
+      - key: MQTT_PREFIX
+        value: esp32/relay

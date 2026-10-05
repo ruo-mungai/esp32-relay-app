@@ -1,6 +1,10 @@
 const TOKEN_KEY = 'esp32.token';
 const REMEMBER_KEY = 'esp32.remember';
 
+/* Backend origin. In dev the Vite proxy forwards /api to :4000; on GitHub
+   Pages set VITE_API_URL to the hosted backend (e.g. https://x.up.railway.app). */
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
 export const getRemember = () => localStorage.getItem(REMEMBER_KEY) !== '0';
 
 export const getToken = () => {
@@ -21,7 +25,7 @@ async function request(path, opts = {}) {
 
   let res;
   try {
-    res = await fetch(`/api${path}`, { ...opts, headers });
+    res = await fetch(`${API_BASE}/api${path}`, { ...opts, headers });
   } catch {
     throw new Error('Cannot reach the server. Is the backend running on :4000?');
   }

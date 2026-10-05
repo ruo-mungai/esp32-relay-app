@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.github
+.env
+server/data.json
+server/data.json.tmp
+src
+public
+index.html
+*.md
