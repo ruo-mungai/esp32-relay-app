@@ -1,67 +1,29 @@
-const LS_TARGET = "esp32.target";
-const LS_AUTH = "esp32.auth";
+const TOKEN_KEY = 'esp32.token';
+const REMEMBER_KEY = 'esp32.remember';
 
-/* Set VITE_DEVICE in .env to point the app at your device without retyping it. */
-export const DEFAULT_TARGET = (import.meta.env.VITE_DEVICE || "192.168.4.1").replace(
-  /^https?:\/\//,
-  ""
-).replace(/\/+$/, "");
+export const getRemember = () => localStorage.getItem(REMEMBER_KEY) !== '0';
 
-export function loadTarget() {
-  return localStorage.getItem(LS_TARGET) || DEFAULT_TARGET;
-}
+export const getToken = () => {
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+};
 
-export function saveTarget(v) {
-  localStorage.setItem(LS_TARGET, v.trim());
-}
+export const setToken = (t, remember = getRemember()) => {
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  if (t) (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, t);
+  localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0');
+};
 
-export function loadAuth() {
-  try {
-    return JSON.parse(localStorage.getItem(LS_AUTH) || "null") || null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveAuth(a) {
-  if (a && a.password) localStorage.setItem(LS_AUTH, JSON.stringify(a));
-  else localStorage.removeItem(LS_AUTH);
-}
-
-function authHeader() {
-  const a = loadAuth();
-  if (!a?.password) return {};
-  return { Authorization: "Basic " + btoa(`${a.username || "admin"}:${a.password}`) };
-}
-
-/** Always hand the browser an absolute URL. A bare "192.168.4.1" would be
- *  treated as a path relative to the dev server, not as a host. */
-export function normalizeTarget(v) {
-  const s = String(v || "").trim().replace(/\/+$/, "");
-  if (!s) return "";
-  return /^https?:\/\//i.test(s) ? s : `http://${s}`;
-}
-
-export function apiUrl(target, path) {
-  return `${normalizeTarget(target)}${path}`;
-}
-
-/**
- * The firmware posts JSON bodies and answers with {ok:true,...}.
- * Throws an Error carrying a human readable message on any failure.
- */
-export async function call(target, path, body) {
-  const opts = { headers: { "Content-Type": "application/json", ...authHeader() } };
-  if (body !== undefined) {
-    opts.method = "POST";
-    opts.body = JSON.stringify(body);
-  }
+async function request(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;
   try {
-    res = await fetch(apiUrl(target, path), opts);
+    res = await fetch(`/api${path}`, { ...opts, headers });
   } catch {
-    throw new Error("Cannot reach the device. Check the IP address and that you are on the same network.");
+    throw new Error('Cannot reach the server. Is the backend running on :4000?');
   }
 
   const text = await res.text();
@@ -69,46 +31,22 @@ export async function call(target, path, body) {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(text.slice(0, 200) || `HTTP ${res.status}`);
+    json = { ok: false, error: text.slice(0, 200) || `HTTP ${res.status}` };
   }
-
-  if (res.status === 401) throw new Error("Authentication required.");
+  if (res.status === 401) setToken(null);
   if (!res.ok || json.ok === false) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
 
-export const getStatus = (t) => call(t, "/api/status");
-export const getLogs = (t, since) => call(t, `/api/logs?since=${since || 0}`);
-export const setRelay = (t, action, seconds) =>
-  call(t, "/api/relay", { action, ...(seconds ? { seconds } : {}) });
-export const pulseRelay = (t) => call(t, "/api/relay-test", {});
-export const reboot = (t) => call(t, "/api/reboot", {});
+export const api = {
+  get: (p) => request(p),
+  post: (p, body) => request(p, { method: 'POST', body: JSON.stringify(body || {}) }),
+  put: (p, body) => request(p, { method: 'PUT', body: JSON.stringify(body || {}) }),
+  del: (p) => request(p, { method: 'DELETE' }),
+};
 
-/** Live updates over the device's mini WebSocket; caller falls back to polling. */
-export function connectSocket(target, onStatus, onLog, onState) {
-  const base = normalizeTarget(target)
-    .replace(/^http:/i, "ws:")
-    .replace(/^https:/i, "wss:");
-  let ws;
-  try {
-    ws = new WebSocket(`${base}/ws`);
-  } catch {
-    onState?.("error");
-    return null;
-  }
-
-  ws.onopen = () => onState?.("open");
-  ws.onclose = () => onState?.("closed");
-  ws.onerror = () => onState?.("error");
-  ws.onmessage = (ev) => {
-    let msg;
-    try {
-      msg = JSON.parse(ev.data);
-    } catch {
-      return;
-    }
-    if (msg.type === "status") onStatus?.(msg.data);
-    else if (msg.type === "log") onLog?.(msg.text);
-  };
-  return ws;
+export async function login(email, password, remember = true) {
+  const r = await api.post('/auth/login', { email, password });
+  setToken(r.token, remember);
+  return r.user;
 }

@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backend runtime data + secrets
+.env
+server/data.json
+server/data.json.tmp
